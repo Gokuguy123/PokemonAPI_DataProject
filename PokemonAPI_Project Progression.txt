@@ -1,0 +1,73 @@
+1/4/25: 
+	- Planned project to pull Pokemon data through an API, perform ETL said data into a local database, and present data in efficient view(s) 
+for reporting/dashboard access
+
+The Problem: "The team" needs help creating an analytics database for Pokemon data that will assist in answering metrics questions they have, as well as creating a dashboard that users will interact with to help answer their own questions.
+
+	Questions:
+		1) What is the average weight of a Pokemon by Pokemon Type?
+		2) What 5 moves are the most common learnable moves by level-up across all Pokemon?
+		3) Which Pokemon species has the most forms/variants? Need the top 10 ranked greatest to least, and GMax/Mega forms should not be included.
+		4) What is the most common method of evolution among each type of Pokemon? Which is the least common?
+		5) Going by Base Stats alone, which Pokemon receives the biggest "boost" in stats after evolving? 
+
+
+1/27/25: 
+	- Created a script to retrieve data from "Pokemon API" according to ID
+		- uses Requests package to send requests, and receive data in response
+		- uses JSON package to dump response data to separate JSON files (one per ID)
+		- Loops through id numbers until no response is received
+
+2/1/25: 
+	- Updated script to use 'msgspec' package, improving efficiency of total data dump process by ~50%.
+		- Avg duration of 'JSON' runs are 00:04:22, Avg duration of 'msgspec' runs are 00:02:20
+	- Script now writes all data to a single JSON file, dynamically named with date and time the file was created.
+
+2/2/25: 
+	- Updated script to use 'sys' package to allow path to be entered as a parameter when running
+	- Updated code comments
+
+2/10/25:
+	- Wrote query to test parsing JSON data into separate columns. Utilized nested Select statements to bring some values to separate fields within a single row instead of separate records. Basic attributes have been parsed. Will work to parse out other elements into separate tables (ex: Moves a Pokemon can learn will be held within a separate table, as will Held Items a Pokemon can have.
+
+2/11/25:
+	- Wrote query to test pulling learnable moves for a Pokemon. Learned how to better use "OPENJSON" and "JSON_VALUE" functions when nested arrays are involved.
+
+2/13/25: 
+	- Rewrote original query parsing basic attributes into distinct records for each Pokemon utilizing JSON_QUERY within JSON_VALUE to better specify where to retrieve specific data points from an array. 
+	- Found that calling the 'pokemon' group URL, I can get a dynamic list of Pokemon available to pull data for instead of looping sequencially through; much better solution. Altered the Python script to pull this list, then loop through URLs returned, covering all Pokemon available. This is a major improvement, as some of the "Pokemon" available through this API group are actually alternate "forms", which have been assigned a much higher ID than any current Pokemon would have. This is data that would be beneficial to have to cover regional variant data (ex: Alolan forms). 
+
+2/16/25:
+	- Used query to build two separate procs for this data; 1 proc to load the data from a single JSON file to my Pokemon database, and 1 proc to loop through all Pokemon files pulled by the API
+	- Updated SSIS package with the next step. The package will now launch the Python script to pull all JSON data from the API, then kick off the main load proc to load this JSON data into Pokemon database.
+
+2/18/25:
+	- Tested using an SSIS ForEach Loop Container to loop through JSON files and parse data to tables. This took approximately 50% longer than executing the main load proc that loops using a cursor. Switched back to executing main load proc in SSIS.
+
+2/19/25:
+	- Created separate database for ETL (in the likeness of a data warehouse). Began further analysis of the data, and began testing transformations in temp tables. One nuance I've accounted for is cases where the ID being provided was not always equal to its PokeDex ID. This is because different forms of a Pokemon, such as a "Mega Form" or "Regional Variant", have a separate record that contains an ID different than that of its original form's ID, even though they would have the same PokeDex ID in Pokemon. This makes sense for the API, as this ID is used as a unique ID, but doesn't make much sense for our purposes. To combat this, the Dex ID is set dynamically to match its original form for each of these variants, and have given each record a "Form Index" using a Rank on the items determined to have the same Dex ID. For example, if both "Rattata" and "Rattata-Alola" exist, "Rattata" would be defined as the original form (Form Index of 1) according to its ID, and Rattata-Alola would follow this (Form Index of 2). Its important to have both contained in the data, as different forms can contain different stats, types, or abilities; but its also important that each Pokemon has its game-accurate Dex ID.
+	- Once I've pulled more data through the API (such as details on Abilities, Moves or Held Items), I plan to dimensionalize the data appropriately. For now, I want to do more research and determine other potential ways to report off of this data.
+
+2/25/25:
+	- Pulled JSONs for additional data sets to assist in answering the questions at hand; Evolution, Moves, Types, and PokemonForms. Altered Python script to loop through multiple different API URLs, while keeping each data set in a separate folder according to location. Using PokemonForms data, I should be able to more reliably pull the actual Dex entry of each Pokemon. 
+
+3/4/25:
+	- Created a database diagram for the planned table structures using dbdiagram.io. 
+
+3/15/25:
+	- Created tables and procs to load Evolution, Moves, Types, and PokemonForms data. Altered the MainLoadProc to properly manage each of the individual procs dynamically.
+	- Analyzed data and created a diagram for the Data Warehouse table structure, dimensionalizing using snowflake schema. Will be creating these tables next, followed by creating a proc to load to load these appropriately.
+
+3/30/25:
+	- Retired logic created previously to determine proper PokeDex ID according to "Pokemon" or "Forms" datasets. Names contained in both sets use hyphens instead of spaces, which makes deriving the true base Pokemon name more difficult without manual manipulation (which isn't acceptable here). 
+	- After further research into the different data sets available, using the "PokeDex" endpoint. The data contained here gives the true base Pokemon name and number of each Pokemon within each game. Using this, I should be able to properly associate Pokemon and Forms records appropriately.
+	- Brought Pokedex data through to "Pokemon" database and updated SRC table diagram. Noticed during intake that SQL would not properly store values with non-ascii values (such as letters with accents) using UTF-8 encoded files with OPENROWSET, regardless of setting the CODEPAGE parameter. To resolve this, I updated the Python script to encode the JSON files to UTF-16, and are now setting CODEPAGE to "65001" when using OPENROWSET function.
+	- Updated warehouse table diagram, and built out additional tables related to Pokedex data. 
+	- Built out most of the data warehouse load proc that will now update DIMs and truncate & reload FACT/REF tables. Need to add "FACT_LEARNABLE_MOVES" to load process.
+
+4/8/25:
+	- Added "FACT_LEARNABLE_MOVES" data load to load process, and verified that all tables are being loaded properly. 
+
+4/12/25:
+	- Deployed SSIS Package to SSIS Catalog, and set the job to load on a daily basis within SQL Server Agent. 
+	- Created queries to answer original questions. 
